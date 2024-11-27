@@ -1,10 +1,15 @@
 const { log, error } = require("../utils/logger");
 const { userAgent, instagram } = require("../utils/config");
 
+const randomUserAgent = userAgent.list?.[Math.floor(Math.random() * userAgent.list.length)];
+if (!randomUserAgent) {
+  throw new Error("User agent is undefined or empty. Please check the userAgent configuration.");
+}
+
 const scrapeInstagram = async (browser, url) => {
   try {
     const page = await browser.newPage();
-    await page.setUserAgent(userAgent);
+    await page.setUserAgent(randomUserAgent);
 
     // Login to Instagram
     log("Navigating to Instagram login page...");
