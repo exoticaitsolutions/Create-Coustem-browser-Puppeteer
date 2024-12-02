@@ -4,7 +4,7 @@ const { log, error } = require("../utils/logger");
 const { userAgent, facebook } = require("../utils/config");
 const fs = require('fs');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
-
+const startTime = Date.now();
 puppeteer.use(StealthPlugin());
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -77,6 +77,7 @@ const scrapeFacebook = async (browser, url) => {
 
     const spaMembers = [];
     const imageUrls = []
+    const friends = []
 
     for (const username of usernames) {
       try {
@@ -106,7 +107,7 @@ const scrapeFacebook = async (browser, url) => {
         if (elements.length >= 4) {
           await elements[3].click();
         } else {
-          console.log('There are fewer than 3 matching anchor tags');
+          log('There are fewer than 3 matching anchor tags');
         }
         await page.waitForTimeout(4000);
 
@@ -115,26 +116,28 @@ const scrapeFacebook = async (browser, url) => {
         let groupMembers = [];
 
         if (username.includes('SPA')) {
+        
           groupMembers = await extractMembers("x1i10hfl xjbqb8w x1ejq31n xd10rxx x1sy0etr x17r0tee x972fbf xcfux6l x1qhh985 xm0m39n x9f619 x1ypdohk xt0psk2 xe8uvvx xdj266r x11i5rnm xat24cr x1mh8g0r xexx8yu x4uap5 x18d9i69 xkhd6sd x16tdsg8 x1hl2dhg xggy1nq x1a2a7pz x1sur9pj xkrqix3 xzsf02u x1pd3egz");
-          spaMembers.push(...groupMembers);
+    
+          const membersToAdd = groupMembers.slice(7); 
+          spaMembers.push(...membersToAdd);
         } else {
-          log("group is not found")
+          log("group is not found");
         }
-
-        console.log("group members name ---",spaMembers )
+        
+        // console.log("group members name ---",spaMembers )
         const length_of_group_member = spaMembers.length
+
         console.log("Number of group members:", length_of_group_member);
 
-        for (let i = 0; i < 10; i++) {  // use length_of_group_member instead of 10
-          const scrollStep = 5; 
-          const currentPosition = 0; 
+        for (let i = 0; i < Math.min(length_of_group_member, 20); i++) {
+          const scrollStep = 5;
+          await page.evaluate((step) => {
+            const currentPosition = window.scrollY; 
+            window.scrollTo(0, currentPosition + step);
+          }, scrollStep);
           
-          await page.evaluate((position, step) => {
-            window.scrollTo(0, position + step);
-          }, currentPosition, scrollStep);
-          
-          await page.waitForTimeout(50); 
-          await page.waitForTimeout(20000);
+          await page.waitForTimeout(10000);
 
           const member_class = "x1i10hfl xjbqb8w x1ejq31n xd10rxx x1sy0etr x17r0tee x972fbf xcfux6l x1qhh985 xm0m39n x9f619 x1ypdohk xt0psk2 xe8uvvx xdj266r x11i5rnm xat24cr x1mh8g0r xexx8yu x4uap5 x18d9i69 xkhd6sd x16tdsg8 x1hl2dhg xggy1nq x1a2a7pz x1sur9pj xkrqix3 xzsf02u x1pd3egz";
           await page.waitForSelector(`.${member_class.split(' ').join('.')}`);
@@ -143,9 +146,9 @@ const scrapeFacebook = async (browser, url) => {
       
           if (elements.length > i + 7) { 
             await elements[i + 7].click();
-            console.log(`Successfully clicked on the ${i + 7}th member profile`);
+            // console.log(`Successfully clicked on the ${i + 7}th member profile`);
       
-            await page.waitForTimeout(20000);
+            await page.waitForTimeout(10000);
       
             const imageUrl = await page.$eval('svg[style="height: 168px; width: 168px;"] g image', (image) => {
               return image ? image.getAttribute('xlink:href') : null;  
@@ -153,30 +156,48 @@ const scrapeFacebook = async (browser, url) => {
              
             if (imageUrl) {
               imageUrls.push(imageUrl);
-              console.log('Image URL:', imageUrl);
+              // console.log('Image URL:', imageUrl);
             } else {
-              console.log('No image URL found');
+              log('No image URL found');
             }
-            
 
-            await page.waitForTimeout(50000);
+            await page.waitForSelector('span strong'); 
+
+            const numbers = await page.$$eval('span', spans => {
+              const result = [];
+          
+              spans.forEach(span => {
+                const strongTag = span.querySelector('strong');
+                if (strongTag) {
+                  result.push(span.innerText); 
+                }
+              });
+              return result; 
+            });
+          
+            const seventhNumber = numbers[6] || "";
+          
+            const isFriendFormat = seventhNumber && /^(\d+ friends)$/.test(seventhNumber);
+            friends.push(isFriendFormat ? seventhNumber : "No friends");
+            // console.log('Friends array:', friends);
+            
+            await page.waitForTimeout(10000);
       
             const back_btn_class = "x1i10hfl xjqpnuy xa49m3k xqeqjp1 x2hbi6w x13fuv20 xu3j5b3 x1q0q8m5 x26u7qi x1ypdohk xdl72j9 x2lah0s xe8uvvx xdj266r x11i5rnm xat24cr x1mh8g0r x2lwn1j xeuugli x16tdsg8 x1hl2dhg xggy1nq x1ja2u2z x1t137rt x1q0g3np x87ps6o x1lku1pv x1a2a7pz x6s0dn4 xzolkzo x12go9s9 x1rnf11y xprq8jg x972fbf xcfux6l x1qhh985 xm0m39n x9f619 x78zum5 xl56j7k xexx8yu x4uap5 x18d9i69 xkhd6sd x1n2onr6 x1vqgdyp x100vrsf x1qhmfi1";
             
-
             await page.waitForSelector(`.${back_btn_class.split(' ').join('.')}`, { visible: true });
       
             const back_btn = await page.$(`.${back_btn_class.split(' ').join('.')}`);
-      
+
             if (back_btn) {
- 
               await back_btn.click();
-              console.log("Back button clicked successfully");
+              log("Back button clicked successfully");
               
-              await page.waitForTimeout(20000);
+              await page.waitForTimeout(10000);
             } else {
               console.log("Back button not found!");
             }
+            
           } else {
             console.log("Less than 10 elements with the specified class found.");
             break; 
@@ -189,11 +210,12 @@ const scrapeFacebook = async (browser, url) => {
 
     const combinedData = [];
 
-    const maxLength = Math.max(spaMembers.length, imageUrls.length);
+    const maxLength = Math.max(spaMembers.length, imageUrls.length, friends.length);
     for (let i = 0; i < maxLength; i++) {
       combinedData.push({
         'SPA Members': spaMembers[i] || '',
-        'Image Urls': imageUrls[i] || ''
+        'Image Urls': imageUrls[i] || '',
+        'Friends': friends[i] || '',
       });
     }
 
@@ -201,15 +223,21 @@ const scrapeFacebook = async (browser, url) => {
       path: 'members.csv',
       header: [
         { id: 'SPA Members', title: 'SPA Members' },
-        { id: 'Image Urls', title: 'Image Urls' }
+        { id: 'Image Urls', title: 'Image Urls' },
+        { id: 'Friends', title: 'friends ' }
       ]
     });
 
     try {
       await csvWriter.writeRecords(combinedData);
-      console.log('CSV file created successfully with SPA and Congress members data.');
+      log('CSV file created successfully with members data.');
     } catch (err) {
       console.error(`Error writing CSV file: ${err.message}`);
+    } finally {
+      const endTime = Date.now();
+      const totalTime = endTime - startTime;
+      const totalTimeInSeconds = (totalTime / 1000).toFixed(2);
+      console.log(`Script completed in ${totalTime} ms (${totalTimeInSeconds} seconds).`);
     }
 
     await page.close();
