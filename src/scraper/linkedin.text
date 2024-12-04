@@ -1,0 +1,110 @@
+const puppeteer = require("puppeteer-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
+const { log, error } = require("../utils/logger");
+const { userAgent, linkedin } = require("../utils/config");
+
+puppeteer.use(StealthPlugin());
+
+const randomUserAgent = userAgent.list?.[Math.floor(Math.random() * userAgent.list.length)];
+if (!randomUserAgent) {
+  throw new Error("User agent is undefined or empty. Please check the userAgent configuration.");
+}
+
+const scrapeLinkedin = async (browser, url) => {
+  try {
+    const page = await browser.newPage();
+    await page.setUserAgent(randomUserAgent);
+
+    log("Navigating to LinkedIn login page...");
+    await page.goto(
+      "https://www.linkedin.com/checkpoint/rm/sign-in-another-account?fromSignIn=true&trk=guest_homepage-basic_nav-header-signin",
+      { waitUntil: "networkidle2" }
+    );
+
+    log("Filling in login credentials...");
+    // Check if the username field is already filled
+    const usernameField = await page.$('input[id="username"]');
+    const usernameValue = await page.evaluate((input) => input.value, usernameField);
+
+    if (!usernameValue) {
+      // Only fill the username if it's empty
+      await page.type('input[id="username"]', linkedin.credentials.username, { delay: 100 });
+    } else {
+      log("Username field is already filled, skipping...");
+    }
+    await page.type('input#password', linkedin.credentials.password, { delay: 100 });
+
+    log("Submitting the login form...");
+    await page.click('button[type="submit"]');
+    // await page.waitForNavigation({ waitUntil: "networkidle2" });
+
+    log("Login successful!");
+
+    log(`Navigating to LinkedIn URL: ${url}`);
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+
+    log("Locating and interacting with the search bar...");
+    await page.waitForSelector('input.search-global-typeahead__input', { visible: true });
+    const searchBar = await page.$('input.search-global-typeahead__input');
+    await searchBar.click({ clickCount: 1 });
+    await searchBar.type("Rohitash .", { delay: 100 });
+
+    log("Successfully entered 'rakesh' into the search bar.");
+    await page.keyboard.press('Enter', { delay: 100 });
+
+    log("Search initiated.");
+
+    // Wait for the element with the specific class
+    const targetClass = 'cOWrynLFRnuRlVmbjjibQcYrqJSUIByHfxvY';
+    await page.waitForSelector(`.${targetClass}`);
+
+    // Get the element and click on it
+    const [newPagePromise] = await Promise.all([
+        browser.waitForTarget(target => target.opener() === page.target()).then(target => target.page()), // Wait for a new page to open
+        page.click(`.${targetClass}`), // Click the element
+    ]);
+
+    // Get the newly opened page
+    const newPage = await newPagePromise;
+
+    // Wait for the element with the specified XPath to be visible
+      const xpath = '//*[@id="ember287"]/h1';
+
+      try {
+        // Use the correct page (newPage) for the XPath lookup
+        await newPage.waitForXPath(xpath, { visible: true });
+
+        // Extract the element's text content
+        const [element] = await newPage.$x(xpath); // $x returns an array of elements
+        if (element) {
+          const name = await newPage.evaluate(el => el.textContent.trim(), element);
+          log('Extracted Name:', name);
+        } else {
+          log("Element not found using the specified XPath.");
+        }
+      } catch (err) {
+        error("Failed to extract name using XPath: " + err.message);
+      }
+
+
+    // Wait for the new page to load
+    await newPage.waitForNavigation();
+
+    log("Extracting data from the page...");
+    const data = await page.evaluate(() => {
+      const username = document.querySelector("header h2")?.innerText || null;
+      const postText = document.querySelector("article div[role='button'] span")?.innerText || null;
+      return { username, postText };
+    });
+    
+    await page.waitForTimeout(600000);  // 10 minutes in milliseconds
+    log("10 minutes have passed. Closing the page...");
+    await page.close();
+    return data;
+  } catch (err) {
+    error("Error scraping LinkedIn: " + err.message);
+    throw err;
+  }
+};
+
+module.exports = { scrapeLinkedin };
