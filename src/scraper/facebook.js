@@ -1,3 +1,27 @@
+/**
+ * Script for configuring a Puppeteer instance with enhanced capabilities, 
+ * including stealth mode and additional utilities for logging, configuration, 
+ * cookie management, and CSV file operations.
+ *
+ * Imports:
+ * - puppeteer-extra: A Puppeteer library with plugin support for extended functionality.
+ * - puppeteer-extra-plugin-stealth: A plugin to minimize detection by anti-bot mechanisms.
+ * - logger: Utility module providing `log` and `error` functions for logging messages.
+ * - config: Module containing configuration settings, including `userAgent` strings and `facebook` specific configurations.
+ * - cookie: Utility module for managing browser cookies with `saveCookies` and `loadCookies` functions.
+ * - csv-writer: Library for creating and writing data to CSV files (`createObjectCsvWriter`).
+ * - fs: Node.js File System module for file-related operations (e.g., read/write).
+ * - path: Node.js module for handling and resolving file and directory paths.
+ *
+ * Functionality:
+ * - Initializes Puppeteer with stealth capabilities to bypass anti-bot detection.
+ * - Utilizes custom logging for activity and error reporting.
+ * - Loads configuration for user agent and Facebook-specific settings.
+ * - Manages browser session persistence through saving and loading cookies.
+ * - Supports structured data handling and export through CSV files.
+ * - Provides file and path utilities for seamless file management.
+ */
+
 const puppeteer = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const { log, error } = require("../utils/logger");
@@ -11,9 +35,6 @@ const path = require("path");
   // Constants for script behavior
   const TYPING_DELAY = 100; // Delay in milliseconds between simulated keystrokes
   const SEARCH_USER = ['SPA - Samajwadi Party Uttar Pradesh group'];
-  const spaMembers = [];
-  const imageUrls = []
-  const friends = []
 
   // Enable stealth plugin to prevent detection
   /**
@@ -33,8 +54,6 @@ const path = require("path");
   if (!randomUserAgent) {
     throw new Error("User agent is undefined or empty. Please check the userAgent configuration.");
   }
-
-  log("Selected User Agent: ", randomUserAgent);
 
   /**
    * Check if an element exists on the page and return it.
@@ -77,6 +96,36 @@ const path = require("path");
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     return statusValid;
   };
+  
+  /**
+ * Automates the login process for Facebook using Puppeteer.
+ * 
+ * This function enters the username and password, clicks the login button, 
+ * waits for the page to load, and checks if the user has successfully logged in. 
+ * If successful, cookies are saved for session persistence.
+ * 
+ * @param {Object} page - The Puppeteer page object representing the current browser page.
+ * @returns {Array} - A tuple where the first element is a boolean indicating the login status 
+ *                    (true if successful, false if failed), and the second element is a message 
+ *                    providing additional details about the login process.
+ * 
+ * Process:
+ * - Waits for the username field to be available and types in the provided username.
+ * - Waits for the password field to be available and types in the provided password.
+ * - Clicks the login button and waits for the page to load.
+ * - Verifies if the login was successful by checking for the presence of a navigation element.
+ * - If login is successful, saves the cookies for the session.
+ * 
+ * Error Handling:
+ * - Logs any errors encountered during the process and returns a failure message.
+ * 
+ * Dependencies:
+ * - `checkedElement`: A helper function that waits for an element to be available before interacting with it.
+ * - `saveCookies`: A utility function that saves the session cookies after a successful login.
+ * - `facebook.credentials.username`: The username for Facebook login.
+ * - `facebook.credentials.password`: The password for Facebook login.
+ * - `TYPING_DELAY`: A predefined delay for simulating human typing behavior.
+ */
 
   const facebookLoginProcess = async (page) => {
     try{
@@ -119,7 +168,31 @@ const path = require("path");
 
   }
 
-  // Function to extract links
+  /**
+ * Extracts unique links from a webpage by scrolling and collecting anchor tags.
+ *
+ * This function scrolls the page incrementally, waits for the content to load, 
+ * and extracts all unique anchor (`<a>`) tags with specific classes. 
+ * It uses a Set to store the links, ensuring no duplicates, and returns an array of unique links.
+ * 
+ * @param {Object} page - The Puppeteer page object representing the current browser page.
+ * @returns {Array} - An array of unique links (URLs) extracted from the page.
+ * 
+ * Process:
+ * - Scrolls the page incrementally (default scroll step: 2000 pixels) with a delay between each scroll.
+ * - Waits for content to load after scrolling.
+ * - Extracts all anchor tags with the class `.x11i5rnm span.xt0psk2 a`.
+ * - Adds each extracted link to a Set to ensure uniqueness.
+ * - Converts the Set to an array and returns the unique links.
+ * 
+ * Error Handling:
+ * - Logs any errors encountered during the link extraction process and returns an empty array.
+ * 
+ * Dependencies:
+ * - `page.evaluate`: Executes JavaScript code within the browser context to interact with the DOM.
+ * - `window.scrollBy`: Scrolls the page by a specified distance.
+ * - `Set`: A JavaScript object used to store unique values (to avoid duplicate links).
+ */
   const extractLinks = async (page) => {
     try {
       const scrollStep = 2000;
@@ -152,8 +225,43 @@ const path = require("path");
       return [];
     }
   };
-  
 
+  /**
+ * Scrapes Facebook profile data based on a list of search users.
+ * 
+ * This function automates the process of searching for users on Facebook, 
+ * navigating through the platform, and extracting relevant profile data 
+ * such as the name, followers, following, and additional details. The data 
+ * is saved into a CSV file for further analysis.
+ * 
+ * @param {Object} page - The Puppeteer page object representing the current browser page.
+ * @param {Array} searchUsers - An array of users to search for on Facebook.
+ * @throws {Error} - Throws an error if `searchUsers` is not an array.
+ * @returns {Array} - A tuple where the first element is a boolean indicating the success of the operation 
+ *                    (true if successful, false if failed), and the second element is a message providing details 
+ *                    about the process.
+ * 
+ * Process:
+ * - Searches for each user in the `searchUsers` array on Facebook.
+ * - Clicks on the corresponding group and navigates to the "People" section.
+ * - Extracts links to user profiles that match the specified criteria.
+ * - Visits each profile and scrapes data including the name, followers, following, and additional details.
+ * - Saves the scraped data to a CSV file (`facebook_profile_data.csv`).
+ * 
+ * Error Handling:
+ * - Logs and returns errors encountered during each search, profile scraping, or data extraction step.
+ * 
+ * Dependencies:
+ * - `checkedElement`: A helper function that waits for an element to be available before interacting with it.
+ * - `extractLinks`: A function that extracts all unique links from the page.
+ * - `createCsvWriter`: A CSV writer used to save the scraped data.
+ * - `log`, `error`: Logging functions for tracking actions and errors.
+ * 
+ * Notes:
+ * - The function expects `searchUsers` to be an array of user names to search for.
+ * - It filters out non-Facebook profile links and only saves links that match certain criteria.
+ * - CSV output is appended to an existing file if it already exists.
+ */
   const scrapp_facebook_Profile_Data = async(page, searchUsers) =>{
     if (!Array.isArray(searchUsers)) {
       throw new Error("searchUsers must be an array");
@@ -201,9 +309,6 @@ const path = require("path");
           console.error('Element not found: "People" link.');
         }
 
-        // const links = await extractLinks(page);
-        // console.log(links); // Logs the list of extracted href links
-
         // Extract profile links
         const links = await extractLinks(page);
         const filteredLinks = Array.from(new Set(links)).filter(link =>
@@ -212,7 +317,6 @@ const path = require("path");
         );
 
         profileLinks.push(...filteredLinks);
-
 
       } catch (err) {
         error(`Error searching for user ${user}: ${err.message}`);
@@ -225,11 +329,28 @@ const path = require("path");
         console.log(`Opening link: ${link}`);
         await page.goto(link, { waitUntil: 'networkidle2' });
 
+        const peopleSelector1 = '.xsgj6o6 a.x1i10hfl.xjbqb8w'; // Your CSS selector here
+        // Check and interact with the element
+        try {
+          const peopleLink1 = await page.$(peopleSelector1);
+          if (peopleLink1) {
+            console.log('Element found. Clicking on it.');
+            await peopleLink1.click();
+            await page.waitForTimeout(2000); // Wait for interaction
+          } else {
+            console.warn(`Element not found: "${peopleSelector1}"`);
+          }
+        } catch (err) {
+          console.error(`Error during element interaction: ${err.message}`);
+        }
+
         // Example: Scrape data from the profile page
         const data = await page.evaluate(() => {
           const name = document.querySelector('.x78zum5.x15sbx0n.x5oxk1f .x1e56ztr span[dir="auto"]')?.innerText || "No name found";
+          const Followers = document.querySelector('.x9f619 > span > a:nth-child(1)')?.innerText || "No Followers found";
+          const Following = document.querySelector('.x9f619 > span > a:nth-child(2)')?.innerText || "No Following found";
           const info = document.querySelector('.xieb3on a.x1i10hfl .xt0psk2 span ')?.innerText || "No details found"; // Replace with actual selectors
-          return { name, info };
+          return { name, Followers, Following, info };
         });
 
         console.log(`Scraped Data from ${link}:`, data);
@@ -240,6 +361,8 @@ const path = require("path");
           path: outputPath,
           header: [
             { id: "name", title: "Name" },
+            { id: "Followers", title: "Followers" },
+            { id: "Following", title: "Following" },
             { id: "info", title: "Details" },
           ],
           append: fs.existsSync(outputPath), // Append if file exists
@@ -255,8 +378,43 @@ const path = require("path");
     }
 
     return [true, "Search completed successfully"];
-  }
+  };
 
+  /**
+ * Scrapes data from Facebook by logging in (if necessary) and extracting profile data of specified users.
+ * 
+ * This function handles the process of logging into Facebook, either by loading cookies for an already logged-in session 
+ * or performing a login procedure if needed. Once logged in, it extracts profile data from a list of users and saves it 
+ * to a CSV file. The function also checks if the website is functional and handles various error scenarios.
+ * 
+ * @param {Object} browser - The Puppeteer browser object used to create a new page and interact with the browser.
+ * @param {string} url - The base URL of the Facebook site (e.g., `https://www.facebook.com/`).
+ * @throws {Error} - Throws an error if the page cannot be loaded, login fails, or scraping encounters issues.
+ * @returns {void} - This function does not return a value but logs relevant messages to the console during its execution.
+ * 
+ * Process:
+ * - A new page is created in the browser and cookies are loaded to check if the user is already logged in.
+ * - If the page is valid and the user is logged in, it proceeds to scrape the profile data of specified users.
+ * - If the user is not logged in, it attempts to log in using the provided credentials and then scrapes the data.
+ * - The scraping process involves extracting profile information such as name, followers, following, and other details.
+ * 
+ * Error Handling:
+ * - Logs errors related to page loading, login failures, and scraping issues.
+ * 
+ * Notes:
+ * - The function expects the `SEARCH_USER` variable to be defined, containing the users whose profile data will be scraped.
+ * - The `loadCookies`, `checkedElement`, and `facebookLoginProcess` functions are assumed to handle cookie loading, element 
+ *   checking, and login respectively.
+ * - The `scrapp_facebook_Profile_Data` function is called to perform the profile scraping after login.
+ * - A wait time of 40 seconds is included before the page is closed to ensure that scraping completes.
+ * 
+ * Dependencies:
+ * - `loadCookies`: A helper function to load saved cookies for Facebook login.
+ * - `checkedElement`: A function to check if an element is available on the page.
+ * - `facebookLoginProcess`: A function that handles Facebook login.
+ * - `scrapp_facebook_Profile_Data`: A function that scrapes profile data from Facebook.
+ * - `SEARCH_USER`: A variable containing the list of users to search for on Facebook.
+ */
   const scrapeFacebook = async (browser, url) => {
     try{
       const page = await browser.newPage();
@@ -285,7 +443,9 @@ const path = require("path");
       }else{
         console.error('Site is not Working')
       }
-
+    
+      await page.waitForTimeout(40000); 
+      await page.close();
     }catch (err) {
       error("Error scraping Facebook: " + err.message);
       throw err;
